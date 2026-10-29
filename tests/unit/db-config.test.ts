@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, unexpectedDatabases } from "@/lib/db-config";
+import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, hasOwnGrant, unexpectedDatabases } from "@/lib/db-config";
 
 const AIVEN = "mysql://avnadmin:p%40ss@pp-mysql.aivencloud.com:12345/defaultdb?ssl-mode=REQUIRED";
 
@@ -70,6 +70,12 @@ describe("isolation checks", () => {
       "watchtower",
     );
     assert.equal(problems.length, 5);
+  });
+  test("hasOwnGrant: needs a grant on its own database, in either quote style", () => {
+    assert.equal(hasOwnGrant(["GRANT ALL PRIVILEGES ON `watchtower`.* TO `watchtower`@`%`"], "watchtower"), true);
+    assert.equal(hasOwnGrant(['GRANT ALL PRIVILEGES ON "watchtower".* TO "watchtower"@"%"'], "watchtower"), true);
+    assert.equal(hasOwnGrant(['GRANT USAGE ON *.* TO "watchtower"@"%"'], "watchtower"), false);
+    assert.equal(hasOwnGrant(['GRANT ALL PRIVILEGES ON "watchtower_old".* TO "watchtower"@"%"'], "watchtower"), false);
   });
   test("visible databases: only its own and the built-in schemas", () => {
     assert.deepEqual(unexpectedDatabases(["information_schema", "performance_schema", "watchtower"], "watchtower"), []);

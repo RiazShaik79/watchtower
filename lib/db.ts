@@ -3,7 +3,7 @@
 // credentials). Times are UTC DATETIME(3), read back as Date.
 import { createHash, randomBytes } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
-import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, unexpectedDatabases } from "./db-config";
+import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, hasOwnGrant, unexpectedDatabases } from "./db-config";
 import { migrate } from "./db-migrate";
 import { log } from "./log";
 import type { NewIncident, Store } from "./store";
@@ -453,8 +453,8 @@ export async function setupWatchtowerDatabase(options: {
     const badGrants = grantProblems(grants, database);
     checks.push({
       name: `"${user}" has rights on "${database}" only`,
-      pass: badGrants.length === 0 && grants.some((g) => g.includes(`\`${database}\`.*`)),
-      detail: badGrants.length ? `unexpected: ${badGrants.join(" | ")}` : `${grants.length} grant line(s)`,
+      pass: badGrants.length === 0 && hasOwnGrant(grants, database),
+      detail: badGrants.length ? `unexpected: ${badGrants.join(" | ")}` : hasOwnGrant(grants, database) ? `${grants.length} grant line(s)` : `no grant on "${database}"`,
     });
 
     const [dbRows] = await userConn.query("SHOW DATABASES");

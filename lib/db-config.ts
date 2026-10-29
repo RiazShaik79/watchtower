@@ -61,12 +61,22 @@ export function assertIdentifier(name: string, what: string): void {
  * Names are `backticked` by default but "double-quoted" under ANSI_QUOTES, which Aiven enables.
  */
 export function grantProblems(grants: string[], database: string): string[] {
-  const own = new RegExp("^GRANT .+ ON ([`\"])" + database.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\1\\.\\* TO ", "i");
+  const own = ownGrantPattern(database);
   return grants.filter((g) => {
     if (/WITH GRANT OPTION/i.test(g)) return true;
     if (/^GRANT USAGE ON \*\.\* TO /i.test(g)) return false;
     return !own.test(g);
   });
+}
+
+/** True when `SHOW GRANTS` includes a grant on the user's own database (so setup actually worked). */
+export function hasOwnGrant(grants: string[], database: string): boolean {
+  const own = ownGrantPattern(database);
+  return grants.some((g) => own.test(g));
+}
+
+function ownGrantPattern(database: string): RegExp {
+  return new RegExp("^GRANT .+ ON ([`\"])" + database.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\1\\.\\* TO ", "i");
 }
 
 /** Databases the new user may see: its own plus MySQL's built-in information schemas. */
