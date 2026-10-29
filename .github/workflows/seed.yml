@@ -1,0 +1,31 @@
+name: seed
+
+# Manual only: load the fixture incidents into the Watchtower database (marked as seed data,
+# never mixed with real incidents). Run it again to reset them; choose "keep" to see dedupe.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "reset = replace earlier seed data; keep = run on top (should store nothing new)"
+        type: choice
+        options: [reset, keep]
+        default: reset
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --omit=dev --ignore-scripts
+      - run: npm run seed -- ${{ inputs.mode == 'keep' && '--no-reset' || '' }}
+        env:
+          WT_DATABASE_URL: ${{ secrets.WT_DATABASE_URL }}
+          WT_DATABASE_CA_CERT: ${{ secrets.WT_DATABASE_CA_CERT }}

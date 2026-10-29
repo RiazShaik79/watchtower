@@ -53,16 +53,16 @@ We stop for the owner's review after every phase. A ✋ marks a step the owner d
   - unset `DEBUG_ERROR_TOKEN` on Render if it's still set
 
 ## Phase 2: Ingestion, grouping, read-only dashboard
-- [ ] ✋ Create the Aiven database `watchtower` and user `watchtower` (grants on `watchtower.*` only), then run the isolation checks in ADR 0003.
-- [ ] Scaffold Next.js 16, TypeScript strict, Tailwind v4, `mysql2`, a test runner and `tsx` for the worker.
-- [ ] `db/migrations/001_init.sql` with the tables from architecture §3, plus a migration runner.
-- [ ] `lib/scrub.ts`, `lib/fingerprint.ts`, `lib/severity.ts`, `lib/audit.ts`, `lib/integrations/render.ts` (GET only).
-- [ ] `worker/tick.ts`: health → logs → deploys → group → purge → keep-alive. Add `.github/workflows/worker.yml` (cron plus dispatch).
-- [ ] Dashboard: login (scrypt hash, DB session, httpOnly cookie), incident list, incident detail, worker-staleness banner, free-hours estimate.
-- [ ] `npm run seed` with fixtures: Sentry payloads, JSON log lines, a cold-start health series and a real outage series.
-- [ ] Tests: scrubbing, fingerprint normalisation, grouping and dedupe, severity (including that a cold start isn't critical), auth.
-- [ ] ✋ Create the Render Free service for the dashboard, and add the Actions secrets to this repo.
-- **Done when:** seeded incidents appear correctly grouped and with the right severity.
+- [ ] ✋ Create the Aiven database `watchtower` and user `watchtower` (grants on `watchtower.*` only), then run the isolation checks in ADR 0003. Steps: `docs/setup-phase-2.md`.
+- [x] Scaffold Next.js 16.4.3, React 19.3, TypeScript 7 strict (erasable-only), Tailwind v4, `mysql2`, `node:test`. No `tsx`: Node 24 strips types; `scripts/register.mjs` resolves imports. Versions pinned to the app's.
+- [x] `db/migrations/001_init.sql` with all tables from architecture §3 (one open incident per fingerprint via a generated unique column; `dispatch_fix` needs an approval via a CHECK), plus the migration runner.
+- [x] `lib/scrub.ts`, `lib/fingerprint.ts`, `lib/parse.ts`, `lib/severity.ts`, `lib/cadence.ts`, `lib/pipeline.ts`, `lib/audit.ts`, `lib/integrations/{render,sentry,app}.ts` (GET only).
+- [x] `worker/tick.ts`: health (if due) → logs → Sentry → deploys → purge; each step fails safe. `.github/workflows/worker.yml` (cron `7,22,37,52`, dispatch, monthly keep-alive).
+- [x] Dashboard: login (scrypt hash, HMAC'd DB session, httpOnly SameSite=Strict cookie, throttle), incident list, incident detail, worker-staleness banner, free-hours estimate, kill-switch state, API cost.
+- [x] `npm run seed` with fixtures: Render log lines (incl. secrets, mailer line, prompt injection), Sentry issues, cold-start and outage health series, a deploy.
+- [x] Tests (95 unit + DB suite in CI): scrubbing, fingerprint normalisation, parsing, grouping and dedupe, severity (cold start isn't critical), health, cadence/free hours, auth, seed fixtures end to end.
+- [ ] ✋ Create the Watchtower GitHub repo, add the Actions secrets and variables, and create the Render Free service for the dashboard. Steps: `docs/setup-phase-2.md`.
+- **Done when:** seeded incidents appear correctly grouped and with the right severity. ✅ In memory (`tests/unit/seed-fixtures.test.ts`); against MySQL in CI (`tests/db/seed.test.ts`); then on the live dashboard after setup.
 
 ## Phase 3: Diagnosis agent (✋ **create the Anthropic API key at the start of this phase**)
 - [ ] `lib/integrations/github.ts`, a read-only contents fetcher that pulls the stack-frame files and the `CLAUDE.md` chain at the deployed commit.

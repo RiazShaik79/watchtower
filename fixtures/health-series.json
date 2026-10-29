@@ -1,0 +1,25 @@
+{
+  "coldStart": {
+    "note": "The app waking from sleep: slow but successful polls. Must NOT raise any incident.",
+    "polls": [
+      { "minutesAgo": 300, "httpStatus": 200, "ms": 640, "db": "up" },
+      { "minutesAgo": 285, "httpStatus": 200, "ms": 34200, "db": "up" },
+      { "minutesAgo": 240, "httpStatus": 200, "ms": 41800, "db": "up" },
+      { "minutesAgo": 225, "httpStatus": 200, "ms": 720, "db": "up" }
+    ]
+  },
+  "outage": {
+    "note": "A real outage: 3 failed polls in a row (critical), then the database down twice (critical), then recovery.",
+    "polls": [
+      { "minutesAgo": 150, "httpStatus": null, "ms": 240000, "db": null, "error": "timeout" },
+      { "minutesAgo": 135, "httpStatus": 502, "ms": 1200, "db": null, "error": "http_502" },
+      { "minutesAgo": 120, "httpStatus": null, "ms": 240000, "db": null, "error": "timeout" },
+      { "minutesAgo": 105, "httpStatus": 503, "ms": 3100, "db": "down" },
+      { "minutesAgo": 90, "httpStatus": 503, "ms": 3050, "db": "down" },
+      { "minutesAgo": 75, "httpStatus": 200, "ms": 810, "db": "up" }
+    ]
+  },
+  "deploys": [
+    { "id": "dep-seed-0001", "status": "live", "commitId": "55bb45cb745e1d2c3b4a5f6e7d8c9b0a1f2e3d4c", "commitMessage": "Merge pull request #1 from RiazShaik79/chore/watchtower-readiness", "minutesAgo": 330 }
+  ]
+}
