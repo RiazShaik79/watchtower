@@ -40,5 +40,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Use Aiven's default sql_mode (ANSI quotes grants and identifiers)
+        run: mysql -h 127.0.0.1 -uroot -pci -e "SET GLOBAL sql_mode = 'ANSI,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_ZERO_DATE,NO_ZERO_IN_DATE,STRICT_ALL_TABLES'; SELECT @@GLOBAL.sql_mode"
       - run: npm run test:db
       - run: npm run build

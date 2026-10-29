@@ -58,9 +58,10 @@ export function assertIdentifier(name: string, what: string): void {
 /**
  * The new user's `SHOW GRANTS` must contain only USAGE on *.* and privileges on its own database,
  * and nothing WITH GRANT OPTION. Returns the offending lines (empty = isolated).
+ * Names are `backticked` by default but "double-quoted" under ANSI_QUOTES, which Aiven enables.
  */
 export function grantProblems(grants: string[], database: string): string[] {
-  const own = new RegExp("^GRANT .+ ON `" + database.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "`\\.\\* TO ", "i");
+  const own = new RegExp("^GRANT .+ ON ([`\"])" + database.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\1\\.\\* TO ", "i");
   return grants.filter((g) => {
     if (/WITH GRANT OPTION/i.test(g)) return true;
     if (/^GRANT USAGE ON \*\.\* TO /i.test(g)) return false;

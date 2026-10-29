@@ -57,6 +57,20 @@ describe("isolation checks", () => {
     );
     assert.equal(problems.length, 4);
   });
+  test("ANSI_QUOTES (Aiven) grants: own database is isolated, the same problems are still caught", () => {
+    assert.deepEqual(grantProblems(['GRANT USAGE ON *.* TO "watchtower"@"%"', 'GRANT ALL PRIVILEGES ON "watchtower".* TO "watchtower"@"%"'], "watchtower"), []);
+    const problems = grantProblems(
+      [
+        'GRANT SELECT ON *.* TO "watchtower"@"%"',
+        'GRANT ALL PRIVILEGES ON "defaultdb".* TO "watchtower"@"%"',
+        'GRANT ALL PRIVILEGES ON "watchtower".* TO "watchtower"@"%" WITH GRANT OPTION',
+        'GRANT "admin_role"@"%" TO "watchtower"@"%"',
+        'GRANT ALL PRIVILEGES ON "watchtower`.* TO "watchtower"@"%"',
+      ],
+      "watchtower",
+    );
+    assert.equal(problems.length, 5);
+  });
   test("visible databases: only its own and the built-in schemas", () => {
     assert.deepEqual(unexpectedDatabases(["information_schema", "performance_schema", "watchtower"], "watchtower"), []);
     assert.deepEqual(unexpectedDatabases(["information_schema", "watchtower", "defaultdb", "mysql"], "watchtower"), ["defaultdb", "mysql"]);

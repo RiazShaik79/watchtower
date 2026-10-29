@@ -37,7 +37,7 @@ Watchtower gets its **own** database and its **own** user, which can't see your 
    - **Your admin Service URI isn't saved anywhere.** The script uses it once and forgets it. Don't paste it, or the printed `mysql://watchtower:` line, into a chat with Claude.
 4. **`WT_DATABASE_CA_CERT`** is the whole text of the same `ca.pem` file. The script prints a PowerShell command that copies it to your clipboard.
 
-Running it again later is safe. If the user already exists, it asks before giving it a new password.
+Running it again later is safe, including after a FAIL. If the user already exists, it asks before giving it a new password. Answer `y`, because the old password was never shown.
 
 ## 2. GitHub: the worker's settings
 
