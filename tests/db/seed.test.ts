@@ -39,10 +39,17 @@ describe("database: migrations and seed", { skip: !url && "WT_DATABASE_URL not s
   test("no fixture secret is stored anywhere", async () => {
     const conn = await mysql.createConnection({ uri: url! });
     try {
-      const [rows] = await conn.query(
-        "SELECT CONCAT_WS(' ', title, message_scrubbed, IFNULL(stack_scrubbed,'')) AS t FROM raw_events UNION ALL SELECT title FROM incidents UNION ALL SELECT CAST(detail_json AS CHAR) FROM audit_log",
-      );
-      const dump = (rows as { t: string | null }[]).map((r) => r.t ?? "").join("\n");
+      const parts: string[] = [];
+      for (const sql of [
+        "SELECT CONCAT_WS(' ', title, message_scrubbed, IFNULL(stack_scrubbed, '')) AS t FROM raw_events",
+        "SELECT title AS t FROM incidents",
+        "SELECT CAST(detail_json AS CHAR) AS t FROM audit_log",
+        "SELECT value AS t FROM settings",
+      ]) {
+        const [rows] = await conn.query(sql);
+        parts.push(...(rows as { t: string | null }[]).map((r) => r.t ?? ""));
+      }
+      const dump = parts.join("\n");
       for (const s of MUST_NOT_APPEAR) assert.ok(!dump.includes(s), `"${s}" stored`);
     } finally {
       await conn.end();
