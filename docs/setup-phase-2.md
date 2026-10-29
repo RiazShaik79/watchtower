@@ -24,7 +24,7 @@ Watchtower gets its **own** database and its **own** user, which can't see your 
    npm install
    npm run db:setup
    ```
-   - First it asks for `ca.pem`. Drag the downloaded file into the PowerShell window, or type its path (e.g. `C:\Users\riaz.shaik\Downloads\ca.pem`), and press Enter. If the file is in Downloads as `ca.pem`, just press Enter.
+   - First it asks for `ca.pem`. Drag the downloaded file into the PowerShell window, or type its path (e.g. `C:\Users\riaz.shaik\Downloads\ca.pem`), and press Enter. If it offers `[Enter = …\Downloads\ca….pem]`, just press Enter. Don't open the file and paste its text; give the file itself.
    - Then it asks for the Service URI. Paste it (right-click pastes) and press Enter. Nothing shows while you paste; that's deliberate.
 3. **Read the result.** You should see four `PASS` lines:
    - `"watchtower" has rights on "watchtower" only`

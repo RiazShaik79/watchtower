@@ -20,8 +20,7 @@ You need, from Aiven -> your MySQL service -> Overview:
 
 // The certificate is asked first and is required (Aiven always uses TLS). Asked after the
 // hidden paste, a stray Enter from the paste could answer it with an empty line.
-const downloadsCa = path.join(os.homedir(), "Downloads", "ca.pem");
-const defaultCa = fs.existsSync(downloadsCa) ? downloadsCa : "";
+const defaultCa = newestDownloadedCa();
 let caPath = "";
 let caCert = "";
 for (let attempt = 1; !caCert; attempt++) {
@@ -31,6 +30,13 @@ for (let attempt = 1; !caCert; attempt++) {
   }
   const hint = defaultCa ? ` [Enter = ${defaultCa}]` : "";
   const typed = (await readLine(`Path to ca.pem (you can drag the file into this window)${hint}: `)).trim().replace(/^& /, "").replace(/^["']|["']$/g, "");
+  if (looksLikeCertificateText(typed)) {
+    // Stop rather than re-ask: the rest of the pasted lines would be read as more answers.
+    console.error(`
+  That's the certificate's text. Give its location instead: drag the ca.pem file itself into
+  this window${defaultCa ? ", or just press Enter to use the one in Downloads" : ""}. Nothing was changed; run npm run db:setup again.`);
+    process.exit(1);
+  }
   caPath = typed || defaultCa;
   if (!caPath) {
     console.error("  The ca.pem path is needed. Try again.");
@@ -50,6 +56,28 @@ const adminUrl = (await readHidden("Paste the Service URI (hidden) and press Ent
 if (!adminUrl.startsWith("mysql://")) {
   console.error("That doesn't look like a Service URI (it should start with mysql://).");
   process.exit(1);
+}
+
+/** The newest ca*.pem in Downloads (browsers name repeats "ca (1).pem"), or "" if none. */
+function newestDownloadedCa(): string {
+  const dir = path.join(os.homedir(), "Downloads");
+  try {
+    return (
+      fs
+        .readdirSync(dir)
+        .filter((f) => /^ca\b.*\.pem$/i.test(f))
+        .map((f) => ({ file: path.join(dir, f), at: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.at - a.at)[0]?.file ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+/** A PEM header/footer, or a long base64 line with nothing path-like in it. */
+function looksLikeCertificateText(answer: string): boolean {
+  if (answer.startsWith("-----")) return true;
+  return answer.length >= 40 && /^[A-Za-z0-9+/=]+$/.test(answer) && !/\.pem$/i.test(answer);
 }
 
 async function run(rotatePassword: boolean): Promise<SetupResult> {
