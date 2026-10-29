@@ -19,7 +19,9 @@ Incidents need durable storage. Aiven gives one free MySQL service per organizat
 2. Connected as `watchtower`, `SHOW GRANTS` shows only `USAGE ON *.*` and `watchtower.*` (nothing WITH GRANT OPTION), and `SHOW DATABASES` lists only `watchtower` plus `information_schema`/`performance_schema`.
 3. Reading the app's database (the admin URI's database, usually `defaultdb`) fails with access denied.
 
-The same logic runs in CI against a MySQL container (`tests/db/setup.test.ts`).
+The same logic runs in CI against a MySQL container (`tests/db/setup.test.ts`), with the container set to Aiven's default `sql_mode` (`ANSI,…`).
+
+Aiven's `ANSI` mode includes `ANSI_QUOTES`, so `SHOW GRANTS` writes names in double quotes, not backticks. The check accepts both (found on the first real run, 2026-10-29). All Watchtower SQL string literals use single quotes, so `ANSI_QUOTES` doesn't change how they're read.
 
 If step 1 fails, fall back to a separate Aiven organization with its own free MySQL service.
 

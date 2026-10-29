@@ -24,8 +24,8 @@ Watchtower gets its **own** database and its **own** user, which can't see your 
    npm install
    npm run db:setup
    ```
-   - When asked for the Service URI, paste it (right-click pastes) and press Enter. Nothing shows while you paste; that's deliberate.
-   - When asked for `ca.pem`, drag the downloaded file into the PowerShell window, or type its path (e.g. `C:\Users\riaz.shaik\Downloads\ca.pem`), and press Enter.
+   - First it asks for `ca.pem`. Drag the downloaded file into the PowerShell window, or type its path (e.g. `C:\Users\riaz.shaik\Downloads\ca.pem`), and press Enter. If the file is in Downloads as `ca.pem`, just press Enter.
+   - Then it asks for the Service URI. Paste it (right-click pastes) and press Enter. Nothing shows while you paste; that's deliberate.
 3. **Read the result.** You should see four `PASS` lines:
    - `"watchtower" has rights on "watchtower" only`
    - `it can't see any other database`
@@ -37,7 +37,7 @@ Watchtower gets its **own** database and its **own** user, which can't see your 
    - **Your admin Service URI isn't saved anywhere.** The script uses it once and forgets it. Don't paste it, or the printed `mysql://watchtower:` line, into a chat with Claude.
 4. **`WT_DATABASE_CA_CERT`** is the whole text of the same `ca.pem` file. The script prints a PowerShell command that copies it to your clipboard.
 
-Running it again later is safe. If the user already exists, it asks before giving it a new password.
+Running it again later is safe, including after a FAIL. If the user already exists, it asks before giving it a new password. Answer `y`, because the old password was never shown.
 
 ## 2. GitHub: the worker's settings
 

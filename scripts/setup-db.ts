@@ -2,6 +2,8 @@
 // (ADR 0003), using the Aiven admin Service URI. The URI is typed in hidden, kept in memory only
 // and never written to disk or logs. Prints the new WT_DATABASE_URL once.
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { setupWatchtowerDatabase, UserExistsError, type SetupResult } from "@/lib/db";
 import { readHidden, readLine } from "./prompt";
 
@@ -12,28 +14,42 @@ This creates a database "watchtower" and a user "watchtower" that can only use t
 checks it can't see your app's data, and creates Watchtower's tables.
 
 You need, from Aiven -> your MySQL service -> Overview:
-  1. the Service URI (starts with mysql://avnadmin:...). It's used once and not saved.
-  2. the CA certificate, downloaded as a file (ca.pem).
+  1. the CA certificate, downloaded as a file (ca.pem).
+  2. the Service URI (starts with mysql://avnadmin:...). It's used once and not saved.
 `);
+
+// The certificate is asked first and is required (Aiven always uses TLS). Asked after the
+// hidden paste, a stray Enter from the paste could answer it with an empty line.
+const downloadsCa = path.join(os.homedir(), "Downloads", "ca.pem");
+const defaultCa = fs.existsSync(downloadsCa) ? downloadsCa : "";
+let caPath = "";
+let caCert = "";
+for (let attempt = 1; !caCert; attempt++) {
+  if (attempt > 3) {
+    console.error("No CA certificate, so nothing was changed. Download ca.pem from Aiven and run this again.");
+    process.exit(1);
+  }
+  const hint = defaultCa ? ` [Enter = ${defaultCa}]` : "";
+  const typed = (await readLine(`Path to ca.pem (you can drag the file into this window)${hint}: `)).trim().replace(/^& /, "").replace(/^["']|["']$/g, "");
+  caPath = typed || defaultCa;
+  if (!caPath) {
+    console.error("  The ca.pem path is needed. Try again.");
+    continue;
+  }
+  try {
+    const text = fs.readFileSync(caPath, "utf8");
+    if (text.includes("BEGIN CERTIFICATE")) caCert = text;
+    else console.error("  That file isn't a certificate (no BEGIN CERTIFICATE line). Try again.");
+  } catch {
+    console.error(`  Couldn't read ${caPath}. Try again.`);
+  }
+}
+console.log(`  Using ${caPath}`);
 
 const adminUrl = (await readHidden("Paste the Service URI (hidden) and press Enter: ")).trim();
 if (!adminUrl.startsWith("mysql://")) {
   console.error("That doesn't look like a Service URI (it should start with mysql://).");
   process.exit(1);
-}
-const caPath = (await readLine("Path to ca.pem (you can drag the file into this window): ")).trim().replace(/^["']|["']$/g, "").replace(/^& '/, "").replace(/'$/, "");
-let caCert: string | undefined;
-if (caPath) {
-  try {
-    caCert = fs.readFileSync(caPath, "utf8");
-  } catch {
-    console.error(`Couldn't read ${caPath}.`);
-    process.exit(1);
-  }
-  if (!caCert.includes("BEGIN CERTIFICATE")) {
-    console.error("That file isn't a certificate (no BEGIN CERTIFICATE line).");
-    process.exit(1);
-  }
 }
 
 async function run(rotatePassword: boolean): Promise<SetupResult> {
@@ -47,7 +63,10 @@ try {
     result = await run(false);
   } catch (err) {
     if (!(err instanceof UserExistsError)) throw err;
-    const answer = (await readLine('\nThe user "watchtower" already exists. Give it a NEW password? Anything using the old one must be updated. (yes/no): ')).trim().toLowerCase();
+    let answer = "";
+    for (let attempt = 0; !answer && attempt < 3; attempt++) {
+      answer = (await readLine('\nThe user "watchtower" already exists. Give it a NEW password? Anything using the old one must be updated. (yes/no): ')).trim().toLowerCase();
+    }
     if (answer !== "yes" && answer !== "y") {
       console.log("Nothing changed.");
       process.exit(0);
