@@ -10,14 +10,20 @@ export async function readHidden(prompt: string): Promise<string> {
   stdin.setEncoding("utf8");
   return new Promise((resolve) => {
     let value = "";
+    let done = false;
     const onData = (chunk: string) => {
+      if (done) return; // swallow stray keys (e.g. the \n of a pasted \r\n) so the next prompt doesn't get them
       for (const ch of chunk) {
         if (ch === "\r" || ch === "\n" || ch === "\u0004") {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.off("data", onData);
+          if (value === "" && ch !== "\u0004") continue; // ignore an Enter before anything is typed
+          done = true;
           process.stdout.write("\n");
-          resolve(value);
+          setTimeout(() => {
+            stdin.off("data", onData);
+            stdin.setRawMode(false);
+            stdin.pause();
+            resolve(value);
+          }, 200);
           return;
         }
         if (ch === "\u0003") process.exit(130);
