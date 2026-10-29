@@ -9,15 +9,17 @@ Incidents need durable storage. Aiven gives one free MySQL service per organizat
 ## Decision
 - Create database `watchtower` and user `watchtower` on the existing Aiven service.
 - Grant `ALL PRIVILEGES ON watchtower.*` and **nothing else**. There is no global grant and no access to the app's database.
-- The **owner creates both in the Aiven console**. Claude and Watchtower never see `avnadmin` or the app's `DATABASE_URL`.
+- The **owner creates both by running `npm run db:setup` on their own laptop** (updated 2026-10-29). The script takes the Aiven admin Service URI as hidden input, keeps it in memory only, creates the database and user (generated password), runs the verification below, creates the tables and prints the new `WT_DATABASE_URL` once. A console-created Aiven user would get admin-level rights by default ([Aiven docs](https://aiven.io/docs/products/mysql/howto/manage-service-users)), which is why a script does it instead. Claude, the worker and the dashboard never see `avnadmin` or the app's `DATABASE_URL`.
 - Watchtower's pool is capped at **3 connections**. The worker uses 1–2 and the dashboard 1–2.
 - Raw events are purged after 14 days and incidents keep only scrubbed text. Target size is under 50 MB.
 - TLS is verified with `rejectUnauthorized: true`, using `WT_DATABASE_CA_CERT`, the same pattern as the app's `lib/db.ts`.
 
-## Verification (phase 2, step 1)
-1. Confirm that Aiven Free allows creating an extra database and user.
-2. Connected as `watchtower`, `SHOW DATABASES` must list only `watchtower` and `information_schema`.
-3. A test query against an app table must fail with access denied.
+## Verification (phase 2, step 1; automated by `db:setup`)
+1. Aiven Free allows creating an extra database and user: the script fails clearly if not.
+2. Connected as `watchtower`, `SHOW GRANTS` shows only `USAGE ON *.*` and `watchtower.*` (nothing WITH GRANT OPTION), and `SHOW DATABASES` lists only `watchtower` plus `information_schema`/`performance_schema`.
+3. Reading the app's database (the admin URI's database, usually `defaultdb`) fails with access denied.
+
+The same logic runs in CI against a MySQL container (`tests/db/setup.test.ts`).
 
 If step 1 fails, fall back to a separate Aiven organization with its own free MySQL service.
 

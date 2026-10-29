@@ -26,6 +26,7 @@ Work in `C:\dev\watchtower` (a git worktree outside OneDrive; `node_modules` mus
 - `npm run dev` — dashboard locally (needs `WT_DATABASE_URL`, `ADMIN_*`, `SESSION_SECRET` in `.env`)
 - `npm run worker:tick` — one worker cycle against `.env`
 - `npm run seed` — reset and replay `fixtures/` through the real pipeline (marked seeded; own fingerprint namespace and `seed:` settings). `-- --no-reset` shows dedupe.
+- `npm run db:setup` — **owner-only, one time**: with the Aiven admin Service URI (hidden input, never stored) creates the `watchtower` database + isolated user, verifies isolation, creates the tables, prints `WT_DATABASE_URL`. Logic in `setupWatchtowerDatabase()` (`lib/db.ts`).
 - `npm run db:migrate`, `npm run hash-password` (prints `ADMIN_PASSWORD_HASH`)
 - `npm run typecheck`, `npm test` (unit, no DB), `npm run test:db` (needs `WT_DATABASE_URL`; CI runs it on a MySQL container), `npm run build`
 - Required test coverage: detection rules, grouping/fingerprinting, scrubbing, auth, approval state machine, prompt-injection handling.

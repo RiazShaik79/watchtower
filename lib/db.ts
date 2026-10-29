@@ -1,8 +1,9 @@
 // The only database access in Watchtower: the mysql2 pool and every query (CLAUDE.md).
 // Connects with WT_DATABASE_URL (database `watchtower`, user `watchtower`: never the app's
 // credentials). Times are UTC DATETIME(3), read back as Date.
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
+import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, unexpectedDatabases } from "./db-config";
 import { migrate } from "./db-migrate";
 import { log } from "./log";
 import type { NewIncident, Store } from "./store";
@@ -12,29 +13,15 @@ import type { Actor, AuditEntry, Incident, IncidentStatus, Kind, Level, Outcome,
 // Connection, migrations, helpers
 // ---------------------------------------------------------------------------------------------
 
-const TLS_SSL_MODES = new Set(["REQUIRED", "VERIFY_CA", "VERIFY_IDENTITY"]);
-
 function createPool(): Pool {
   const url = process.env.WT_DATABASE_URL?.trim();
   if (!url) throw new Error("WT_DATABASE_URL is not set. See .env.example.");
-  // Aiven adds `?ssl-mode=REQUIRED`, which mysql2 doesn't understand: turn it into a verified TLS
-  // connection with the provider's CA. A local URL without it connects without TLS.
-  const parsed = new URL(url);
-  const sslMode = parsed.searchParams.get("ssl-mode")?.toUpperCase();
-  parsed.searchParams.delete("ssl-mode");
-  let ssl: { ca: string; rejectUnauthorized: true } | undefined;
-  if (sslMode && TLS_SSL_MODES.has(sslMode)) {
-    const ca = process.env.WT_DATABASE_CA_CERT?.trim().replace(/\\n/g, "\n");
-    if (!ca) throw new Error(`WT_DATABASE_URL asks for TLS (ssl-mode=${sslMode}) but WT_DATABASE_CA_CERT is not set.`);
-    ssl = { ca, rejectUnauthorized: true };
-  }
   return mysql.createPool({
-    uri: parsed.toString(),
+    ...connectionOptions(url, process.env.WT_DATABASE_CA_CERT),
     connectionLimit: 3, // shares the Aiven service with the app (ADR 0003)
     waitForConnections: true,
     decimalNumbers: true,
     timezone: "Z",
-    ...(ssl ? { ssl } : {}),
   });
 }
 
@@ -393,4 +380,112 @@ export async function deleteAdminSession(idHash: string): Promise<void> {
 
 export async function purgeAdminSessions(now: Date = new Date()): Promise<number> {
   return (await exec("DELETE FROM admin_sessions WHERE expires_at <= ?", [now])).affectedRows;
+}
+
+// ---------------------------------------------------------------------------------------------
+// One-time setup (`npm run db:setup`, ADR 0003): with the Aiven admin URL, create Watchtower's own
+// database and a user limited to it, prove the isolation, then create the tables as that user.
+// The admin URL is used only inside this function and is never stored or logged.
+// ---------------------------------------------------------------------------------------------
+
+export class UserExistsError extends Error {
+  constructor(user: string) {
+    super(`User "${user}" already exists.`);
+    this.name = "UserExistsError";
+  }
+}
+
+export interface SetupCheck {
+  name: string;
+  pass: boolean;
+  detail: string;
+}
+
+export interface SetupResult {
+  checks: SetupCheck[];
+  ok: boolean;
+  /** The new user's connection URL. Only set when every check passed. */
+  databaseUrl: string | null;
+  migrationsApplied: string[];
+  userCreated: boolean;
+}
+
+export async function setupWatchtowerDatabase(options: {
+  adminUrl: string;
+  caCert?: string;
+  database?: string;
+  user?: string;
+  /** Required when the user already exists: replaces its password. */
+  rotatePassword?: boolean;
+}): Promise<SetupResult> {
+  const database = options.database ?? "watchtower";
+  const user = options.user ?? "watchtower";
+  assertIdentifier(database, "database name");
+  assertIdentifier(user, "user name");
+  const admin = describeUrl(options.adminUrl);
+  const forbidden = admin.database || "defaultdb";
+  if (forbidden.toLowerCase() === database) throw new Error("The admin URL must point at the app's database, not Watchtower's.");
+  const password = randomBytes(24).toString("base64url");
+
+  const adminConn = await mysql.createConnection(connectionOptions(options.adminUrl, options.caCert, "The admin URL"));
+  let userCreated = false;
+  try {
+    await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`);
+    try {
+      await adminConn.query("CREATE USER ?@'%' IDENTIFIED BY ?", [user, password]);
+      userCreated = true;
+    } catch (err) {
+      if ((err as { code?: string })?.code !== "ER_CANNOT_USER") throw err;
+      if (!options.rotatePassword) throw new UserExistsError(user);
+      await adminConn.query("ALTER USER ?@'%' IDENTIFIED BY ?", [user, password]);
+    }
+    await adminConn.query(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO ?@'%'`, [user]);
+  } finally {
+    await adminConn.end();
+  }
+
+  const databaseUrl = buildDatabaseUrl({ user, password, host: admin.host, port: admin.port, database, sslMode: admin.sslMode });
+  const checks: SetupCheck[] = [];
+  const userConn = await mysql.createConnection(connectionOptions(databaseUrl, options.caCert));
+  try {
+    const [grantRows] = await userConn.query("SHOW GRANTS");
+    const grants = (grantRows as Record<string, string>[]).map((r) => Object.values(r)[0] ?? "");
+    const badGrants = grantProblems(grants, database);
+    checks.push({
+      name: `"${user}" has rights on "${database}" only`,
+      pass: badGrants.length === 0 && grants.some((g) => g.includes(`\`${database}\`.*`)),
+      detail: badGrants.length ? `unexpected: ${badGrants.join(" | ")}` : `${grants.length} grant line(s)`,
+    });
+
+    const [dbRows] = await userConn.query("SHOW DATABASES");
+    const visible = (dbRows as Record<string, string>[]).map((r) => Object.values(r)[0] ?? "");
+    const extra = unexpectedDatabases(visible, database);
+    checks.push({ name: "it can't see any other database", pass: extra.length === 0, detail: extra.length ? `also sees: ${extra.join(", ")}` : visible.join(", ") });
+
+    let denied = false;
+    let detail = "";
+    try {
+      await userConn.query(`SHOW TABLES FROM \`${forbidden.replace(/`/g, "")}\``);
+      detail = `it CAN read "${forbidden}"`;
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? "";
+      denied = code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_BAD_DB_ERROR";
+      detail = denied ? `access denied (${code})` : `unexpected error ${code}`;
+    }
+    checks.push({ name: `it can't read the app's database "${forbidden}"`, pass: denied, detail });
+  } finally {
+    await userConn.end();
+  }
+
+  const ok = checks.every((c) => c.pass);
+  let migrationsApplied: string[] = [];
+  if (ok) {
+    const pool = mysql.createPool({ ...connectionOptions(databaseUrl, options.caCert), connectionLimit: 1 });
+    try {
+      migrationsApplied = await migrate(pool);
+    } finally {
+      await pool.end();
+    }
+  }
+  return { checks, ok, databaseUrl: ok ? databaseUrl : null, migrationsApplied, userCreated };
 }

@@ -16,7 +16,8 @@
     "worker:tick": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/tick.ts",
     "seed": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/seed.ts",
     "db:migrate": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/migrate.ts",
-    "hash-password": "node --import ./scripts/register.mjs scripts/hash-password.ts"
+    "hash-password": "node --import ./scripts/register.mjs scripts/hash-password.ts",
+    "db:setup": "node --import ./scripts/register.mjs scripts/setup-db.ts"
   },
   "dependencies": {
     "mysql2": "3.24.6",

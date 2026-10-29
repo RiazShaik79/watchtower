@@ -4,7 +4,7 @@ The code is done and tested. To make Watchtower run for real, you need to do thr
 
 | # | Where | What | Time |
 |---|---|---|---|
-| 1 | Aiven + a MySQL client | Create Watchtower's own database and user | 10 min |
+| 1 | Aiven + one command on your laptop | Create Watchtower's own database, user and tables | 5 min |
 | 2 | GitHub (Watchtower repo) | Add the secrets and settings the 15-minute worker needs | 10 min |
 | 3 | Render | Create the dashboard website (Free, sleeps when idle) | 10 min |
 
@@ -12,43 +12,43 @@ The code is done and tested. To make Watchtower run for real, you need to do thr
 
 ## 1. Aiven: Watchtower's own database and user
 
-Watchtower gets its **own** database and its **own** user, which can't see your app's data (ADR 0003).
+Watchtower gets its **own** database and its **own** user, which can't see your app's data (ADR 0003). One command does it all, including creating the tables. You don't write any SQL.
 
-1. Connect to your Aiven MySQL as the admin user (`avnadmin`), the same way you ran the app's database setup before (MySQL Workbench or the `mysql` command). The connection details are on the Aiven service's **Overview** page.
-2. Make up a strong password for the new user, for example from a password manager. Then run:
-   ```sql
-   CREATE DATABASE watchtower CHARACTER SET utf8mb4;
-   CREATE USER 'watchtower'@'%' IDENTIFIED BY 'PUT-THE-NEW-PASSWORD-HERE';
-   GRANT ALL PRIVILEGES ON watchtower.* TO 'watchtower'@'%';
-   SHOW GRANTS FOR 'watchtower'@'%';
+1. **In Aiven**, open your MySQL service → **Overview**:
+   - Under **Connection information**, click **Download** next to **CA certificate**. The file `ca.pem` goes to your Downloads folder.
+   - Copy the **Service URI**. It starts with `mysql://avnadmin:` (click the eye icon to reveal it, then the copy icon).
+2. **In PowerShell** on your laptop, run:
    ```
-   The last line should show `USAGE ON *.*` and `ALL PRIVILEGES ON watchtower.*`, and **nothing else**.
-3. **Isolation check.** Disconnect, then connect again as `watchtower` with the new password and run:
-   ```sql
-   SHOW DATABASES;
+   cd C:\dev\watchtower
+   git pull
+   npm install
+   npm run db:setup
    ```
-   You should see only `watchtower` plus MySQL's built-in `information_schema` (and possibly `performance_schema`). Then try reading your app's data, using your app's database name (often `defaultdb`):
-   ```sql
-   SELECT COUNT(*) FROM defaultdb.users;
-   ```
-   It must fail with **access denied**. If it doesn't, stop and tell Claude.
-4. **Build the connection string** for later (keep it in Notepad for now; don't save the file):
-   ```
-   mysql://watchtower:PASSWORD@HOST:PORT/watchtower?ssl-mode=REQUIRED
-   ```
-   `HOST` and `PORT` are the same as your app's. If the password contains `@ : / # %` or spaces, URL-encode them (`@` becomes `%40`, for example).
-   You'll also need the **CA certificate**. It's the same one your app uses (`DATABASE_CA_CERT` on Render), or Aiven → Overview → **CA certificate** → Download.
+   - When asked for the Service URI, paste it (right-click pastes) and press Enter. Nothing shows while you paste; that's deliberate.
+   - When asked for `ca.pem`, drag the downloaded file into the PowerShell window, or type its path (e.g. `C:\Users\riaz.shaik\Downloads\ca.pem`), and press Enter.
+3. **Read the result.** You should see four `PASS` lines:
+   - `"watchtower" has rights on "watchtower" only`
+   - `it can't see any other database`
+   - `it can't read the app's database "defaultdb"`
+   - `tables created`
+
+   Then it prints one line starting `mysql://watchtower:`. That's your **`WT_DATABASE_URL`**. Keep the window open (or paste it into Notepad without saving) for steps 2 and 3.
+   - **Any `FAIL`:** no connection line is shown. Copy just the PASS/FAIL lines to Claude; they contain no secrets.
+   - **Your admin Service URI isn't saved anywhere.** The script uses it once and forgets it. Don't paste it, or the printed `mysql://watchtower:` line, into a chat with Claude.
+4. **`WT_DATABASE_CA_CERT`** is the whole text of the same `ca.pem` file. The script prints a PowerShell command that copies it to your clipboard.
+
+Running it again later is safe. If the user already exists, it asks before giving it a new password.
 
 ## 2. GitHub: the worker's settings
 
-Claude creates the Watchtower repo for you (public, so GitHub Actions minutes are free). Then go to **https://github.com/RiazShaik79/watchtower → Settings → Secrets and variables → Actions**.
+The Watchtower repo already exists (public, so GitHub Actions minutes are free). Go to **https://github.com/RiazShaik79/watchtower → Settings → Secrets and variables → Actions**.
 
 **Secrets tab → New repository secret.** Secrets are hidden once saved.
 
 | Name | Value |
 |---|---|
-| `WT_DATABASE_URL` | the connection string from step 1.4 |
-| `WT_DATABASE_CA_CERT` | the whole CA certificate text, including the `BEGIN`/`END` lines |
+| `WT_DATABASE_URL` | the `mysql://watchtower:…` line from step 1.3 |
+| `WT_DATABASE_CA_CERT` | the whole text of `ca.pem`, including the `BEGIN`/`END` lines |
 | `RENDER_API_KEY` | Render → your avatar (top right) → **Account settings** → **API keys** → **Create API key** |
 | `SENTRY_API_TOKEN` | Sentry → avatar → **User settings** → **Personal Tokens** → new token with only **Project: Read** and **Issue & Event: Read** |
 
