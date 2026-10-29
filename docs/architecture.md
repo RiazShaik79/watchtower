@@ -112,7 +112,11 @@ Rules enforced in `lib/state-machine.ts`:
 
 ## 5. Detection & grouping
 
-**Fingerprint** = `sha256(kind | error type | top in-app frame (file:function) | normalised message)`. Normalisation replaces numbers, UUIDs, hex IDs, quoted strings, emails and timestamps with placeholders before hashing.
+**Fingerprint** = `sha256(kind | error type | location | normalised message)`, computed on the **scrubbed** text. Normalisation replaces numbers, UUIDs, hex IDs, quoted strings, emails and timestamps with placeholders before hashing.
+- **Location** = the app route when known (`/api/log/[id]` and `/api/log/42` both become `/api/log/:id`), else the top in-app stack frame (`file:function`, build paths and hashes stripped), else a normalised SQL snippet. Preferring the route lets the same error reported by the Render logs and by Sentry group into **one** incident.
+- **Fixed fingerprints:** every "database unreachable" error (any connection code) is one incident, and health polls use fixed app-down / db-down fingerprints.
+- **Dedupe:** `raw_events` is unique on `(source, external_id)` (Render log id; Sentry `issue:count`; `health:<time>`; `deploy:status`), so overlapping log windows never double count.
+- **Sentry counts:** a Sentry issue whose count grew becomes one event standing for the new occurrences. When the logs and Sentry both report an error, the incident's event count includes both.
 
 **Severity rules** (first match wins):
 

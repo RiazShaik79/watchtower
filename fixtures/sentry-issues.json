@@ -1,0 +1,24 @@
+[
+  {
+    "id": "9000000001",
+    "title": "TypeError: Cannot read properties of undefined (reading 'servings')",
+    "culprit": "PATCH /api/log/[id]",
+    "level": "error",
+    "count": "2",
+    "minutesAgoFirstSeen": 50,
+    "minutesAgoLastSeen": 30,
+    "metadata": { "type": "TypeError", "value": "Cannot read properties of undefined (reading 'servings')", "filename": "app/api/log/[id]/route.ts", "function": "PATCH" },
+    "note": "The same error the Render logs show: must join that incident, not open a new one."
+  },
+  {
+    "id": "9000000002",
+    "title": "RangeError: Invalid time value",
+    "culprit": "GET /dashboard",
+    "level": "error",
+    "count": "1",
+    "minutesAgoFirstSeen": 35,
+    "minutesAgoLastSeen": 35,
+    "metadata": { "type": "RangeError", "value": "Invalid time value", "filename": "components/Dashboard.tsx", "function": "formatDay" },
+    "note": "A browser-side error only Sentry sees."
+  }
+]

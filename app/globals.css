@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/* Design tokens. Severity colours always appear next to a text label (never colour alone). */
+@theme {
+  --color-paper: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-sunken: #eef0f3;
+  --color-line: #dde1e7;
+  --color-ink: #16191d;
+  --color-muted: #5b6370;
+  --color-faint: #8a929e;
+  --color-accent: #2f5bd3;
+  --color-critical: #b4232c;
+  --color-critical-soft: #fde8e9;
+  --color-high: #b85c00;
+  --color-high-soft: #fff0df;
+  --color-medium: #8a6d00;
+  --color-medium-soft: #fbf4d6;
+  --color-low: #4b5563;
+  --color-low-soft: #eceff3;
+  --color-ok: #1f7a4d;
+  --color-ok-soft: #e3f4ea;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #0f1216;
+    --color-surface: #171b21;
+    --color-sunken: #1e232a;
+    --color-line: #2b313a;
+    --color-ink: #e8ebef;
+    --color-muted: #a3abb7;
+    --color-faint: #78818d;
+    --color-accent: #7b9cff;
+    --color-critical: #ff8a8f;
+    --color-critical-soft: #3a1619;
+    --color-high: #ffb366;
+    --color-high-soft: #3a2511;
+    --color-medium: #e8cf6a;
+    --color-medium-soft: #332c10;
+    --color-low: #b6bec9;
+    --color-low-soft: #262b33;
+    --color-ok: #6fd3a0;
+    --color-ok-soft: #12301f;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}

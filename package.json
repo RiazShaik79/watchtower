@@ -1,0 +1,35 @@
+{
+  "name": "watchtower",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ./scripts/register.mjs --test \"tests/unit/*.test.ts\"",
+    "test:db": "node --env-file-if-exists=.env --import ./scripts/register.mjs --test --test-concurrency=1 \"tests/db/*.test.ts\"",
+    "worker:tick": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/tick.ts",
+    "seed": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/seed.ts",
+    "db:migrate": "node --env-file-if-exists=.env --import ./scripts/register.mjs worker/migrate.ts",
+    "hash-password": "node --import ./scripts/register.mjs scripts/hash-password.ts"
+  },
+  "dependencies": {
+    "mysql2": "3.24.6",
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2"
+  }
+}

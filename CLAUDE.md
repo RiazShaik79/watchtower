@@ -22,12 +22,21 @@ This is the **incident workflow**. It is separate from the **build workflow** (t
 - Logging: structured JSON via `lib/log.ts`. Never log secrets, tokens, raw payloads, or unscrubbed text.
 
 ## Running & testing
-_(Commands land in phase 2; keep this section current.)_
-- `npm run dev` — dashboard locally
+Work in `C:\dev\watchtower` (a git worktree outside OneDrive; `node_modules` must not sync). Node 24; no `tsx` — Node strips types itself and `scripts/register.mjs` resolves `@/…` and extensionless imports, so TypeScript must stay **erasable-only** (no enums, no constructor parameter properties; tsconfig enforces it).
+- `npm run dev` — dashboard locally (needs `WT_DATABASE_URL`, `ADMIN_*`, `SESSION_SECRET` in `.env`)
 - `npm run worker:tick` — one worker cycle against `.env`
-- `npm run seed` — insert fake incidents from `fixtures/` (no real app needed)
-- `npm run typecheck`, `npm test`
+- `npm run seed` — reset and replay `fixtures/` through the real pipeline (marked seeded; own fingerprint namespace and `seed:` settings). `-- --no-reset` shows dedupe.
+- `npm run db:migrate`, `npm run hash-password` (prints `ADMIN_PASSWORD_HASH`)
+- `npm run typecheck`, `npm test` (unit, no DB), `npm run test:db` (needs `WT_DATABASE_URL`; CI runs it on a MySQL container), `npm run build`
 - Required test coverage: detection rules, grouping/fingerprinting, scrubbing, auth, approval state machine, prompt-injection handling.
+
+## Code map
+- `lib/pipeline.ts` — signal → scrub → fingerprint → store (dedupe) → group → severity → audit. Used by the worker and the seed alike.
+- `lib/parse.ts` (Render log lines, Sentry issues) · `lib/scrub.ts` · `lib/fingerprint.ts` · `lib/severity.ts` (error rules + health evaluation) · `lib/cadence.ts` (health cadence, free-hours estimate)
+- `lib/store.ts` — the persistence interface; `lib/db.ts` implements it (and is the only SQL); `tests/helpers/memory-store.ts` mirrors it for unit tests.
+- `lib/integrations/{render,sentry,app}.ts` — GET-only clients; each the only reader of its credentials.
+- `worker/tick.ts` — one cycle; each step fails safe independently and is recorded in `settings` + `audit_log`.
+- `app/` — dashboard (login, incident list + status panel, incident detail); every page calls `requireAdmin()`.
 
 ## Guardrails — hard rules, not suggestions
 1. **Least privilege.**

@@ -1,0 +1,60 @@
+name: worker
+
+# Only schedule and manual dispatch can run this workflow, so pull-request code never sees the
+# secrets below (CLAUDE.md guardrail 1). The health poll inside follows the active-hours cadence.
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *" # every 15 min, off the top of the hour (ADR 0002)
+    - cron: "3 4 1 * *" # monthly keep-alive (see the keepalive job)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    # Off until the repo variable WORKER_ENABLED is "true" (set it after adding the secrets; set it
+    # to anything else to pause the worker without touching code).
+    if: vars.WORKER_ENABLED == 'true' && github.event.schedule != '3 4 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --omit=dev --ignore-scripts
+      - name: Worker tick
+        run: npm run worker:tick
+        env:
+          WT_DATABASE_URL: ${{ secrets.WT_DATABASE_URL }}
+          WT_DATABASE_CA_CERT: ${{ secrets.WT_DATABASE_CA_CERT }}
+          APP_HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
+          POLL_TIMEZONE: ${{ vars.POLL_TIMEZONE }}
+          POLL_ACTIVE_HOURS: ${{ vars.POLL_ACTIVE_HOURS }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_OWNER_ID: ${{ vars.RENDER_OWNER_ID }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          SENTRY_API_TOKEN: ${{ secrets.SENTRY_API_TOKEN }}
+          SENTRY_API_URL: ${{ vars.SENTRY_API_URL }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          KILL_SWITCH: ${{ vars.KILL_SWITCH }}
+
+  # GitHub disables scheduled workflows after 60 days without repository activity. Re-enabling the
+  # workflow once a month through the API keeps it alive without making commits.
+  keepalive:
+    if: github.event.schedule == '3 4 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow enable worker.yml --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
