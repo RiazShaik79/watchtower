@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+.next-test/
+out/
+next-env.d.ts
+
+# env & secrets — never commit real values
+.env
+.env.*
+!.env.example
+*.pem
+.env.sentry-build-plugin
+
+# logs & local data
+*.log
+npm-debug.log*
+coverage/
+tmp/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
