@@ -1,7 +1,7 @@
 // In-memory Store with the same semantics as lib/db.ts (dedupe on source+externalId, one open
 // incident per fingerprint), so pipeline tests need no database.
-import type { NewIncident, Store } from "@/lib/store";
-import { TERMINAL_STATUSES, type AuditEntry, type Incident, type ScrubbedSignal } from "@/lib/types";
+import type { ApiUsageRow, DiagnosisStore, NewDiagnosis, NewIncident, Store, StoredEvent } from "@/lib/store";
+import { SEVERITY_RANK, TERMINAL_STATUSES, type AuditEntry, type Incident, type ScrubbedSignal } from "@/lib/types";
 
 export interface MemoryStore extends Store {
   events: (ScrubbedSignal & { id: number; incidentId: number | null })[];
@@ -82,6 +82,87 @@ export function memoryStore(): MemoryStore {
     },
     async setSetting(name, value) {
       settings.set(name, value);
+    },
+  };
+}
+
+export interface MemoryDiagnosisStore extends DiagnosisStore {
+  base: MemoryStore;
+  diagnoses: (NewDiagnosis & { id: number })[];
+  usage: (ApiUsageRow & { at: Date })[];
+  requests: { approvalId: number; incidentId: number; model: string | null; notes: string | null; handledAt: Date | null; diagnosisId: number | null }[];
+}
+
+/** The diagnosis side of lib/db.ts in memory, on top of a pipeline memory store. */
+export function memoryDiagnosisStore(base: MemoryStore = memoryStore(), now: () => Date = () => new Date()): MemoryDiagnosisStore {
+  const diagnoses: MemoryDiagnosisStore["diagnoses"] = [];
+  const usage: MemoryDiagnosisStore["usage"] = [];
+  const requests: MemoryDiagnosisStore["requests"] = [];
+  const toStored = (e: MemoryStore["events"][number]): StoredEvent => ({
+    id: e.id,
+    source: e.source,
+    occurredAt: e.occurredAt,
+    level: e.level,
+    title: e.title,
+    message: e.message,
+    stack: e.stack ?? null,
+    route: e.route ?? null,
+    eventCount: e.count ?? 1,
+  });
+  return {
+    base,
+    diagnoses,
+    usage,
+    requests,
+    getSetting: base.getSetting,
+    audit: base.audit,
+    async getIncident(id) {
+      const i = base.incidents.find((x) => x.id === id);
+      return i ? { ...i } : null;
+    },
+    async incidentEvents(incidentId, limit) {
+      return base.events.filter((e) => e.incidentId === incidentId).slice(-limit).map(toStored);
+    },
+    async recentDeploys(limit) {
+      return base.events.filter((e) => e.source === "deploy").slice(-limit).reverse().map(toStored);
+    },
+    async findDiagnosis(incidentId, inputHash, model) {
+      return diagnoses.findLast((d) => d.incidentId === incidentId && d.inputHash === inputHash && d.model === model && d.status === "ok")?.id ?? null;
+    },
+    async usageSince(from) {
+      const rows = usage.filter((u) => u.at >= from);
+      return { calls: rows.length, costUsd: rows.reduce((s, u) => s + u.costUsd, 0) };
+    },
+    async saveDiagnosis(d) {
+      const id = diagnoses.length + 1;
+      diagnoses.push({ ...d, id });
+      return id;
+    },
+    async recordUsage(u) {
+      usage.push({ ...u, at: now() });
+    },
+    async setIncidentStatus(id, from, to) {
+      const i = base.incidents.find((x) => x.id === id);
+      if (!i || i.status !== from) return false;
+      i.status = to;
+      return true;
+    },
+    async pendingDiagnosisRequests(limit) {
+      return requests.filter((r) => r.handledAt === null).slice(0, limit);
+    },
+    async markRequestHandled(approvalId, diagnosisId) {
+      const r = requests.find((x) => x.approvalId === approvalId);
+      if (r) {
+        r.handledAt = now();
+        r.diagnosisId = diagnosisId ?? r.diagnosisId;
+      }
+    },
+    async diagnosisCandidates(limit) {
+      return base.incidents
+        .filter((i) => i.status === "new" && !i.seeded && SEVERITY_RANK[i.severity] >= SEVERITY_RANK.medium && !diagnoses.some((d) => d.incidentId === i.id))
+        .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.lastSeen.getTime() - a.lastSeen.getTime())
+        .slice(0, limit)
+        .map((i) => ({ ...i }));
     },
   };
 }

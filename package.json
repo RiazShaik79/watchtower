@@ -20,6 +20,7 @@
     "db:setup": "node --import ./scripts/register.mjs scripts/setup-db.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
     "mysql2": "3.24.6",
     "next": "16.4.3",
     "react": "19.3.0",

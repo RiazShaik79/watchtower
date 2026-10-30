@@ -1,4 +1,5 @@
 // Worker freshness, app health, latest deploy, free-hours estimate, kill switch and API cost.
+import { toggleKillSwitch } from "@/app/actions";
 import { projectMonth } from "@/lib/cadence";
 import { formatAgo, formatDateTime, isStale } from "@/lib/format";
 import type { HealthPollView } from "@/lib/db";
@@ -11,6 +12,10 @@ export interface StatusData {
   awakeMinutes: number;
   killSwitch: { on: boolean; source: "env" | "dashboard" | null };
   apiCostUsd: number;
+  monthlyBudgetUsd: number;
+  diagnoses: { count: number; failed: number };
+  /** The app's /api/health reported chaos mode on (ADR 0007). */
+  chaosOn: boolean;
   healthPolls: HealthPollView[];
   now: Date;
 }
@@ -32,8 +37,22 @@ export function StatusPanel({ data }: { data: StatusData }) {
   const projected = projectMonth(usedHours, data.now);
   const lastPoll = data.healthPolls[0];
 
+  const overBudget = data.apiCostUsd >= data.monthlyBudgetUsd;
+
   return (
     <div className="space-y-4">
+      {data.chaosOn ? (
+        <div role="alert" className="rounded-xl border border-critical bg-critical-soft px-4 py-3 text-sm text-critical">
+          <strong>CHAOS MODE IS ON in the app.</strong> Deliberate test errors can be triggered in production. When the test is done, remove{" "}
+          <code>CHAOS_MODE</code> from the Place-and-Plate service&apos;s Environment on Render.
+        </div>
+      ) : null}
+      {overBudget ? (
+        <div role="alert" className="rounded-xl border border-critical bg-critical-soft px-4 py-3 text-sm text-critical">
+          <strong>The monthly API budget is used up</strong> (${data.apiCostUsd.toFixed(2)} of ${data.monthlyBudgetUsd.toFixed(2)}). Diagnosis is paused until next month or
+          until <code>MONTHLY_API_BUDGET_USD</code> is raised.
+        </div>
+      ) : null}
       {stale ? (
         <div role="alert" className="rounded-xl border border-critical bg-critical-soft px-4 py-3 text-sm text-critical">
           <strong>The worker looks stale.</strong>{" "}
@@ -96,16 +115,32 @@ export function StatusPanel({ data }: { data: StatusData }) {
       </div>
 
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
+        <form action={toggleKillSwitch} className="flex items-center gap-2">
+          <span>
+            Kill switch:{" "}
+            <strong className={data.killSwitch.on ? "text-critical" : "text-ink"}>
+              {data.killSwitch.on ? `on (${data.killSwitch.source === "env" ? "KILL_SWITCH env" : "dashboard"})` : "off"}
+            </strong>
+          </span>
+          {data.killSwitch.source === "env" ? null : (
+            <button
+              type="submit"
+              name="on"
+              value={data.killSwitch.on ? "0" : "1"}
+              className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:bg-sunken"
+              title={data.killSwitch.on ? "Allow diagnosis again" : "Stop all Claude calls and workflow triggers"}
+            >
+              {data.killSwitch.on ? "Turn off" : "Turn on"}
+            </button>
+          )}
+        </form>
         <span>
-          Kill switch:{" "}
-          <strong className={data.killSwitch.on ? "text-critical" : "text-ink"}>
-            {data.killSwitch.on ? `on (${data.killSwitch.source === "env" ? "KILL_SWITCH env" : "dashboard"})` : "off"}
-          </strong>
+          API cost this month: <strong className="text-ink">${data.apiCostUsd.toFixed(2)}</strong> of ${data.monthlyBudgetUsd.toFixed(0)}
         </span>
         <span>
-          API cost this month: <strong className="text-ink">${data.apiCostUsd.toFixed(2)}</strong>
+          Diagnoses this month: <strong className="text-ink">{data.diagnoses.count}</strong>
+          {data.diagnoses.failed ? ` (${data.diagnoses.failed} failed)` : ""}
         </span>
-        <span>Diagnosis and fixes arrive in phases 3 and 4; this dashboard is read-only for now.</span>
       </div>
     </div>
   );
