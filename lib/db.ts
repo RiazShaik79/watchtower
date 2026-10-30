@@ -2,7 +2,7 @@
 // Connects with WT_DATABASE_URL (database `watchtower`, user `watchtower`: never the app's
 // credentials). Times are UTC DATETIME(3), read back as Date.
 import { createHash, randomBytes } from "node:crypto";
-import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
+import mysql, { type Connection, type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { assertIdentifier, buildDatabaseUrl, connectionOptions, describeUrl, grantProblems, hasOwnGrant, unexpectedDatabases } from "./db-config";
 import { migrate } from "./db-migrate";
 import { log } from "./log";
@@ -417,7 +417,12 @@ export async function setupWatchtowerDatabase(options: {
   user?: string;
   /** Required when the user already exists: replaces its password. */
   rotatePassword?: boolean;
+  /** Progress messages for the terminal, so a slow step never looks frozen. */
+  onStep?: (message: string) => void;
 }): Promise<SetupResult> {
+  const step = options.onStep ?? (() => {});
+  // Every setup query fails after 30 s instead of waiting forever.
+  const run = (conn: Connection, sql: string, values?: unknown[]) => conn.query({ sql, values, timeout: 30_000 });
   const database = options.database ?? "watchtower";
   const user = options.user ?? "watchtower";
   assertIdentifier(database, "database name");
@@ -427,28 +432,32 @@ export async function setupWatchtowerDatabase(options: {
   if (forbidden.toLowerCase() === database) throw new Error("The admin URL must point at the app's database, not Watchtower's.");
   const password = randomBytes(24).toString("base64url");
 
+  step(`Connecting to ${admin.host} as ${admin.user}...`);
   const adminConn = await mysql.createConnection(connectionOptions(options.adminUrl, options.caCert, "The admin URL"));
   let userCreated = false;
   try {
-    await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`);
+    step(`Creating database "${database}" and user "${user}"...`);
+    await run(adminConn, `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`);
     try {
-      await adminConn.query("CREATE USER ?@'%' IDENTIFIED BY ?", [user, password]);
+      await run(adminConn, "CREATE USER ?@'%' IDENTIFIED BY ?", [user, password]);
       userCreated = true;
     } catch (err) {
       if ((err as { code?: string })?.code !== "ER_CANNOT_USER") throw err;
       if (!options.rotatePassword) throw new UserExistsError(user);
-      await adminConn.query("ALTER USER ?@'%' IDENTIFIED BY ?", [user, password]);
+      step(`User "${user}" already exists: giving it a new password...`);
+      await run(adminConn, "ALTER USER ?@'%' IDENTIFIED BY ?", [user, password]);
     }
-    await adminConn.query(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO ?@'%'`, [user]);
+    await run(adminConn, `GRANT ALL PRIVILEGES ON \`${database}\`.* TO ?@'%'`, [user]);
   } finally {
     await adminConn.end();
   }
 
   const databaseUrl = buildDatabaseUrl({ user, password, host: admin.host, port: admin.port, database, sslMode: admin.sslMode });
   const checks: SetupCheck[] = [];
+  step(`Checking isolation, connected as "${user}"...`);
   const userConn = await mysql.createConnection(connectionOptions(databaseUrl, options.caCert));
   try {
-    const [grantRows] = await userConn.query("SHOW GRANTS");
+    const [grantRows] = await run(userConn, "SHOW GRANTS");
     const grants = (grantRows as Record<string, string>[]).map((r) => Object.values(r)[0] ?? "");
     const badGrants = grantProblems(grants, database);
     checks.push({
@@ -457,7 +466,7 @@ export async function setupWatchtowerDatabase(options: {
       detail: badGrants.length ? `unexpected: ${badGrants.join(" | ")}` : hasOwnGrant(grants, database) ? `${grants.length} grant line(s)` : `no grant on "${database}"`,
     });
 
-    const [dbRows] = await userConn.query("SHOW DATABASES");
+    const [dbRows] = await run(userConn, "SHOW DATABASES");
     const visible = (dbRows as Record<string, string>[]).map((r) => Object.values(r)[0] ?? "");
     const extra = unexpectedDatabases(visible, database);
     checks.push({ name: "it can't see any other database", pass: extra.length === 0, detail: extra.length ? `also sees: ${extra.join(", ")}` : visible.join(", ") });
@@ -465,7 +474,7 @@ export async function setupWatchtowerDatabase(options: {
     let denied = false;
     let detail = "";
     try {
-      await userConn.query(`SHOW TABLES FROM \`${forbidden.replace(/`/g, "")}\``);
+      await run(userConn, `SHOW TABLES FROM \`${forbidden.replace(/`/g, "")}\``);
       detail = `it CAN read "${forbidden}"`;
     } catch (err) {
       const code = (err as { code?: string })?.code ?? "";
@@ -480,6 +489,7 @@ export async function setupWatchtowerDatabase(options: {
   const ok = checks.every((c) => c.pass);
   let migrationsApplied: string[] = [];
   if (ok) {
+    step("Creating tables...");
     const pool = mysql.createPool({ ...connectionOptions(databaseUrl, options.caCert), connectionLimit: 1 });
     try {
       migrationsApplied = await migrate(pool);
