@@ -1,11 +1,14 @@
 // One worker cycle (`npm run worker:tick`), run by .github/workflows/worker.yml every 15 min:
-// health (if due) → Render logs → Sentry → deploys → purge. Each step fails safe on its own:
+// health (if due) → Render logs → Sentry → deploys → diagnose → purge. Each step fails safe on its own:
 // an error is recorded and surfaced on the dashboard, never retried into an action (guardrail 7).
 import { pathToFileURL } from "node:url";
 import { audit } from "@/lib/audit";
 import { shouldPollHealth } from "@/lib/cadence";
-import { closeDb, dbStore, purgeAdminSessions, purgeRawEvents, runMigrations } from "@/lib/db";
+import { closeDb, dbDiagnosisStore, dbStore, purgeAdminSessions, purgeRawEvents, runMigrations } from "@/lib/db";
+import { diagnosisConfigFromEnv, runDiagnosisStep } from "@/lib/diagnose";
+import { anthropicClient } from "@/lib/integrations/anthropic";
 import { pollHealth } from "@/lib/integrations/app";
+import { githubSource } from "@/lib/integrations/github";
 import { fetchDeploys, fetchLogs, renderConfigured } from "@/lib/integrations/render";
 import { fetchRecentIssues, sentryConfigured } from "@/lib/integrations/sentry";
 import { isKillSwitchOn } from "@/lib/kill-switch";
@@ -19,6 +22,7 @@ import type { Signal } from "@/lib/types";
 const LOG_OVERLAP_MS = 2 * 60_000;
 const FIRST_RUN_LOOKBACK_MS = 60 * 60_000;
 const MAX_LOOKBACK_MS = 6 * 24 * 60 * 60_000; // Render keeps 7 days of logs on Hobby
+const MAX_DIAGNOSES_PER_TICK = 3; // each takes up to a few minutes; the job times out at 10
 
 type StepResult = Record<string, unknown>;
 
@@ -30,7 +34,9 @@ async function stepHealth(store: Store, now: Date): Promise<StepResult> {
   }
   const poll = await pollHealth();
   const evaluation = await recordHealth(store, poll);
-  return { outcome: evaluation.outcome, ms: poll.ms, status: poll.httpStatus };
+  // The app reports chaos mode in its health body (ADR 0007); the dashboard shows a banner while on.
+  if (poll.chaos !== undefined) await store.setSetting("app_chaos", poll.chaos ? "on" : "off");
+  return { outcome: evaluation.outcome, ms: poll.ms, status: poll.httpStatus, ...(poll.chaos ? { chaos: true } : {}) };
 }
 
 async function stepLogs(store: Store, now: Date): Promise<StepResult> {
@@ -67,6 +73,13 @@ async function stepDeploys(store: Store): Promise<StepResult> {
   return { deploys: deploys.length, new: await recordDeploys(store, deploys) };
 }
 
+async function stepDiagnose(): Promise<StepResult> {
+  const client = anthropicClient();
+  if (!client) return { skipped: "ANTHROPIC_API_KEY not set" };
+  const deps = { store: dbDiagnosisStore(), client, code: githubSource(), config: diagnosisConfigFromEnv() };
+  return { ...(await runDiagnosisStep(deps, MAX_DIAGNOSES_PER_TICK)) };
+}
+
 async function stepPurge(): Promise<StepResult> {
   return { raw_events: await purgeRawEvents(14), sessions: await purgeAdminSessions() };
 }
@@ -87,6 +100,7 @@ export async function runTick(now: Date = new Date()): Promise<{ ok: boolean; su
     ["logs", () => stepLogs(store, now)],
     ["sentry", () => stepSentry(store)],
     ["deploys", () => stepDeploys(store)],
+    ["diagnose", () => stepDiagnose()],
     ["purge", () => stepPurge()],
   ];
   for (const [name, run] of steps) {

@@ -201,5 +201,8 @@ export async function recordDeploys(store: Store, deploys: DeployInfo[]): Promis
       JSON.stringify({ id: newest.id, status: newest.status, commit: newest.commitId?.slice(0, 7) ?? null, at: (newest.finishedAt ?? newest.createdAt).toISOString() }),
     );
   }
+  // The full SHA of the code that's actually running: diagnosis reads the source at this commit.
+  const live = [...deploys].filter((d) => d.status === "live" && d.commitId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  if (live?.commitId && /^[0-9a-f]{7,40}$/i.test(live.commitId)) await store.setSetting("live_commit", live.commitId);
   return added;
 }

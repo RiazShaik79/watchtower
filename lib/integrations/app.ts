@@ -4,7 +4,7 @@ import type { HealthPoll } from "../severity";
 
 const ATTEMPT_TIMEOUT_MS = 120_000;
 
-async function attempt(url: string): Promise<{ httpStatus: number | null; db: "up" | "down" | null; error?: string }> {
+async function attempt(url: string): Promise<{ httpStatus: number | null; db: "up" | "down" | null; chaos?: boolean; error?: string }> {
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -13,13 +13,15 @@ async function attempt(url: string): Promise<{ httpStatus: number | null; db: "u
       signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
     });
     let db: "up" | "down" | null = null;
+    let chaos: boolean | undefined;
     try {
-      const body = (await res.json()) as { db?: unknown };
+      const body = (await res.json()) as { db?: unknown; chaos?: unknown };
       db = body.db === "up" || body.db === "down" ? body.db : null;
+      chaos = body.chaos === true;
     } catch {
       db = null;
     }
-    return { httpStatus: res.status, db, error: res.ok ? undefined : `http_${res.status}` };
+    return { httpStatus: res.status, db, chaos, error: res.ok ? undefined : `http_${res.status}` };
   } catch (err) {
     const name = (err as { name?: string })?.name;
     return { httpStatus: null, db: null, error: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network" };

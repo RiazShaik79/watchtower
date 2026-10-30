@@ -7,9 +7,11 @@ Pricing per million tokens, checked 2026-10-28:
 
 | Model | Input | Output | Cache hit |
 |---|---|---|---|
-| Sonnet 5.5 | $2 | $10 | $0.10 |
+| Sonnet 5.5 | $2 | $10 | $0.20 |
 | Opus 5.5 | $4 | $20 | $0.20 |
 | Haiku 5.5 | $0.10 | $0.50 | — |
+
+Cache writes (5-minute TTL) cost 1.25× input. Corrected 2026-10-30: Sonnet 5.5's cache-hit price is $0.20, not $0.10 (checked against the current Claude API pricing table in phase 3). `lib/diagnose.ts` `PRICES` holds the figures used for `api_usage`; an unknown model is priced at the most expensive tier, never as free.
 
 The Start tier allows 1,000 RPM with a $500/month cap. New orgs may begin on the lower Evaluation tier.
 

@@ -21,7 +21,7 @@ jobs:
     # to anything else to pause the worker without touching code).
     if: vars.WORKER_ENABLED == 'true' && github.event.schedule != '3 4 1 * *'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15 # up to 3 diagnoses of a minute or two each
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +45,16 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           KILL_SWITCH: ${{ vars.KILL_SWITCH }}
+          # Diagnosis (phase 3). Without ANTHROPIC_API_KEY the diagnose step is skipped.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          ANTHROPIC_DEEP_MODEL: ${{ vars.ANTHROPIC_DEEP_MODEL }}
+          DIAG_MAX_PER_HOUR: ${{ vars.DIAG_MAX_PER_HOUR }}
+          DIAG_MAX_PER_DAY: ${{ vars.DIAG_MAX_PER_DAY }}
+          MONTHLY_API_BUDGET_USD: ${{ vars.MONTHLY_API_BUDGET_USD }}
+          APP_REPO: ${{ vars.APP_REPO }}
+          # Read-only access to the app's public source, with this run's own token (no extra secret).
+          GITHUB_CONTENTS_TOKEN: ${{ github.token }}
 
   # GitHub disables scheduled workflows after 60 days without repository activity. Re-enabling the
   # workflow once a month through the API keeps it alive without making commits.

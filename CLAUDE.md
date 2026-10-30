@@ -35,8 +35,11 @@ Work in `C:\dev\watchtower` (a git worktree outside OneDrive; `node_modules` mus
 - `lib/pipeline.ts` — signal → scrub → fingerprint → store (dedupe) → group → severity → audit. Used by the worker and the seed alike.
 - `lib/parse.ts` (Render log lines, Sentry issues) · `lib/scrub.ts` · `lib/fingerprint.ts` · `lib/severity.ts` (error rules + health evaluation) · `lib/cadence.ts` (health cadence, free-hours estimate)
 - `lib/store.ts` — the persistence interface; `lib/db.ts` implements it (and is the only SQL); `tests/helpers/memory-store.ts` mirrors it for unit tests.
-- `lib/integrations/{render,sentry,app}.ts` — GET-only clients; each the only reader of its credentials.
-- `worker/tick.ts` — one cycle; each step fails safe independently and is recorded in `settings` + `audit_log`.
+- `lib/integrations/{render,sentry,app,github}.ts` — GET-only clients; each the only reader of its credentials. `github.ts` reads the app's public source at the live commit with the worker job's own `github.token` (`GITHUB_CONTENTS_TOKEN`).
+- `lib/integrations/anthropic.ts` — the only reader of `ANTHROPIC_API_KEY` (worker only, never the dashboard); one structured-output request per diagnosis.
+- `lib/diagnose.ts` — gather inputs (events, route/stack/imported files, CLAUDE.md chain, commits) → prompt (cached instructions + source, then `<untrusted_log_data>` with < > escaped) → kill switch, cache (incident + input hash + model), caps and budget → call → `validateDiagnosis` (`lib/diagnosis-schema.ts`: closed schema, citations must be supplied refs) → scrub → store, `api_usage`, audit → `transition(→ diagnosed)`. `runDiagnosisStep` is the worker step (owner requests first, max 3 per run).
+- `lib/state-machine.ts` — the transition table from architecture §4; `transition()` audits every move and refuses `fix_approved` (phase 4's approval path only).
+- `worker/tick.ts` — one cycle (health → logs → Sentry → deploys → diagnose → purge); each step fails safe independently and is recorded in `settings` + `audit_log`. Re-diagnose on the dashboard only queues an `approvals(rediagnose)` row for the next run.
 - `app/` — dashboard (login, incident list + status panel, incident detail); every page calls `requireAdmin()`.
 
 ## Guardrails — hard rules, not suggestions

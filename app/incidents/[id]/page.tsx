@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { Header } from "@/components/Header";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { requireAdmin } from "@/lib/auth";
-import { getIncident, listAudit, listIncidentEvents } from "@/lib/db";
+import { DiagnosisPanel } from "@/components/DiagnosisPanel";
+import { getIncident, listAudit, listDiagnoses, listIncidentEvents, pendingDiagnosisRequest } from "@/lib/db";
 import { KIND_LABELS, formatAgo, formatDateTime, statusLabel } from "@/lib/format";
+import { TERMINAL_STATUSES } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +28,12 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
   if (!Number.isInteger(id) || id <= 0) notFound();
   const incident = await getIncident(id);
   if (!incident) notFound();
-  const [events, auditTrail] = await Promise.all([listIncidentEvents(id, 50), listAudit({ incidentId: id, limit: 50 })]);
+  const [events, auditTrail, diagnoses, pending] = await Promise.all([
+    listIncidentEvents(id, 50),
+    listAudit({ incidentId: id, limit: 50 }),
+    listDiagnoses(id, 10),
+    pendingDiagnosisRequest(id),
+  ]);
   const now = new Date();
 
   return (
@@ -67,9 +74,17 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
             </p>
           ) : null}
           <p className="mt-4 rounded-lg bg-sunken px-3 py-2 text-sm text-muted">
-            Diagnosis arrives in phase 3, and Approve or Dismiss in phase 4. Nothing here triggers any action yet.
+            Approve or Dismiss arrive in phase 4. Nothing here changes the app.
           </p>
         </section>
+
+        <DiagnosisPanel
+          incidentId={incident.id}
+          closed={TERMINAL_STATUSES.includes(incident.status)}
+          diagnoses={diagnoses}
+          pending={pending}
+          now={now}
+        />
 
         <section className="rounded-xl border border-line bg-surface">
           <div className="border-b border-line px-5 py-3">
@@ -78,9 +93,10 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
           </div>
           <ul>
             {events.map((e) => (
-              <li key={e.id} className="border-b border-line px-5 py-3 last:border-0">
+              <li key={e.id} id={`event-${e.id}`} className="scroll-mt-4 border-b border-line px-5 py-3 last:border-0 target:bg-sunken">
                 <div className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted">
                   <span>{formatDateTime(e.occurredAt)}</span>
+                  <span className="font-mono">event:{e.id}</span>
                   <span>{SOURCE_LABELS[e.source]}</span>
                   <span className={e.level === "error" ? "text-critical" : e.level === "warn" ? "text-high" : ""}>{e.level}</span>
                   {e.eventCount > 1 ? <span>×{e.eventCount}</span> : null}

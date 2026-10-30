@@ -4,7 +4,8 @@ import { SeverityBadge } from "@/components/SeverityBadge";
 import { StatusPanel, type StatusData } from "@/components/StatusPanel";
 import { requireAdmin } from "@/lib/auth";
 import { monthKey } from "@/lib/cadence";
-import { apiCostThisMonth, getSettings, listIncidents, listRecentHealthPolls } from "@/lib/db";
+import { apiCostThisMonth, diagnosisStatsThisMonth, getSettings, listIncidents, listRecentHealthPolls } from "@/lib/db";
+import { diagnosisConfigFromEnv } from "@/lib/diagnose";
 import { KIND_LABELS, formatAgo, formatDateTime, statusLabel } from "@/lib/format";
 import { killSwitchFromEnv } from "@/lib/kill-switch";
 
@@ -26,11 +27,12 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
   const now = new Date();
   const awakeKey = `awake_minutes:${monthKey(now)}`;
 
-  const [incidents, settings, healthPolls, apiCostUsd] = await Promise.all([
+  const [incidents, settings, healthPolls, apiCostUsd, diagnosisStats] = await Promise.all([
     listIncidents(filter),
-    getSettings(["last_tick_at", "last_tick_status", "last_tick_errors", "latest_deploy", "kill_switch", awakeKey]),
+    getSettings(["last_tick_at", "last_tick_status", "last_tick_errors", "latest_deploy", "kill_switch", "app_chaos", awakeKey]),
     listRecentHealthPolls(12),
     apiCostThisMonth(now),
+    diagnosisStatsThisMonth(now),
   ]);
 
   const envKill = killSwitchFromEnv();
@@ -42,6 +44,9 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
     awakeMinutes: Number(settings[awakeKey] ?? 0),
     killSwitch: { on: envKill || settings.kill_switch === "on", source: envKill ? "env" : settings.kill_switch === "on" ? "dashboard" : null },
     apiCostUsd,
+    monthlyBudgetUsd: diagnosisConfigFromEnv().monthlyBudgetUsd,
+    diagnoses: diagnosisStats,
+    chaosOn: settings.app_chaos === "on",
     healthPolls,
     now,
   };

@@ -57,6 +57,8 @@ export interface HealthPoll {
   ms: number;
   /** `db` field from the response body, when there was one. */
   db: "up" | "down" | null;
+  /** `chaos` field from the response body: true while the app's chaos mode is on (ADR 0007). */
+  chaos?: boolean;
   /** Short failure reason: "timeout", "network", "http_500"… */
   error?: string;
 }
