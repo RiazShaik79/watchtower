@@ -37,12 +37,15 @@ export async function readHidden(prompt: string): Promise<string> {
 
 /** Read a visible line. */
 export async function readLine(prompt: string): Promise<string> {
-  process.stdout.write(prompt);
-  if (!process.stdin.isTTY) return readPipedLine();
+  if (!process.stdin.isTTY) {
+    process.stdout.write(prompt);
+    return readPipedLine();
+  }
   const { createInterface } = await import("node:readline/promises");
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
   try {
-    return await rl.question("");
+    // readline must draw the prompt itself: it redraws the line and would erase text written before.
+    return await rl.question(prompt);
   } finally {
     rl.close();
   }

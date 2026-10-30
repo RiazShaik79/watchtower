@@ -52,26 +52,34 @@ for (let attempt = 1; !caCert; attempt++) {
 }
 console.log(`  Using ${caPath}`);
 
+// Asked before connecting, so nothing waits for an answer in the middle of the run.
+// Only used if the user already exists (e.g. a re-run); a new user gets a password anyway.
+const rotateAnswer = (await readLine('If user "watchtower" already exists, give it a new password? (Y/n): ')).trim().toLowerCase();
+const rotatePassword = rotateAnswer === "" || rotateAnswer === "y" || rotateAnswer === "yes";
+
 const adminUrl = (await readHidden("Paste the Service URI (hidden) and press Enter: ")).trim();
 if (!adminUrl.startsWith("mysql://")) {
   console.error("That doesn't look like a Service URI (it should start with mysql://).");
   process.exit(1);
 }
 
-/** The newest ca*.pem in Downloads (browsers name repeats "ca (1).pem"), or "" if none. */
+/**
+ * The newest ca*.pem (browsers name repeats "ca (1).pem") in Downloads, including a Downloads
+ * folder that Windows has moved into OneDrive, or "" if none.
+ */
 function newestDownloadedCa(): string {
-  const dir = path.join(os.homedir(), "Downloads");
-  try {
-    return (
-      fs
-        .readdirSync(dir)
-        .filter((f) => /^ca\b.*\.pem$/i.test(f))
-        .map((f) => ({ file: path.join(dir, f), at: fs.statSync(path.join(dir, f)).mtimeMs }))
-        .sort((a, b) => b.at - a.at)[0]?.file ?? ""
-    );
-  } catch {
-    return "";
+  const roots = [os.homedir(), process.env.OneDriveCommercial, process.env.OneDrive].filter((r): r is string => !!r);
+  const found: { file: string; at: number }[] = [];
+  for (const dir of new Set(roots.map((r) => path.join(r, "Downloads")))) {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (/^ca\b.*\.pem$/i.test(f)) found.push({ file: path.join(dir, f), at: fs.statSync(path.join(dir, f)).mtimeMs });
+      }
+    } catch {
+      // folder doesn't exist
+    }
   }
+  return found.sort((a, b) => b.at - a.at)[0]?.file ?? "";
 }
 
 /** A PEM header/footer, or a long base64 line with nothing path-like in it. */
@@ -80,28 +88,15 @@ function looksLikeCertificateText(answer: string): boolean {
   return answer.length >= 40 && /^[A-Za-z0-9+/=]+$/.test(answer) && !/\.pem$/i.test(answer);
 }
 
-async function run(rotatePassword: boolean): Promise<SetupResult> {
-  return setupWatchtowerDatabase({ adminUrl, caCert, rotatePassword });
-}
-
 let result: SetupResult;
 try {
-  console.log("\nWorking...");
-  try {
-    result = await run(false);
-  } catch (err) {
-    if (!(err instanceof UserExistsError)) throw err;
-    let answer = "";
-    for (let attempt = 0; !answer && attempt < 3; attempt++) {
-      answer = (await readLine('\nThe user "watchtower" already exists. Give it a NEW password? Anything using the old one must be updated. (yes/no): ')).trim().toLowerCase();
-    }
-    if (answer !== "yes" && answer !== "y") {
-      console.log("Nothing changed.");
-      process.exit(0);
-    }
-    result = await run(true);
-  }
+  console.log("");
+  result = await setupWatchtowerDatabase({ adminUrl, caCert, rotatePassword, onStep: (m) => console.log(`  ${m}`) });
 } catch (err) {
+  if (err instanceof UserExistsError) {
+    console.log('\nUser "watchtower" already exists and you chose not to change its password, so nothing changed.');
+    process.exit(0);
+  }
   const e = err as { code?: string; message?: string };
   console.error(`\nSetup failed: ${e.code ?? ""} ${e.message ?? String(err)}`.replace(/mysql:\/\/[^\s]+/g, "[URL hidden]"));
   if (e.code === "ER_SPECIFIC_ACCESS_DENIED_ERROR" || e.code === "ER_ACCESS_DENIED_ERROR" || e.code === "ER_DBACCESS_DENIED_ERROR") {
