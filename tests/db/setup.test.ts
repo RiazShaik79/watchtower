@@ -2,6 +2,7 @@
 // it creates an isolated database and user, proves the user can't read the "app" database,
 // creates the tables, and refuses to silently reuse an existing user.
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { after, before, describe, test } from "node:test";
 import mysql from "mysql2/promise";
 import { describeUrl } from "@/lib/db-config";
@@ -40,7 +41,10 @@ describe("database setup (db:setup)", { skip: !url && "WT_DATABASE_URL not set" 
     const r = await setupWatchtowerDatabase({ adminUrl, database: DB, user: USER });
     assert.ok(r.ok, JSON.stringify(r.checks, null, 1));
     assert.equal(r.userCreated, true);
-    assert.deepEqual(r.migrationsApplied, ["001_init.sql"]);
+    // Every migration in the repo, in order (a fresh database gets them all).
+    const all = fs.readdirSync("db/migrations").filter((f) => /^\d+_.+\.sql$/.test(f)).sort();
+    assert.equal(all[0], "001_init.sql");
+    assert.deepEqual(r.migrationsApplied, all);
     assert.ok(r.databaseUrl?.startsWith(`mysql://${USER}:`));
 
     const conn = await mysql.createConnection({ uri: r.databaseUrl! });
